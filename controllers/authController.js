@@ -2,6 +2,8 @@ const bcryp = require("bcrypt");
 const UserModel = require("../src/models/userModel");
 const asyncHandle = require("express-async-handler");
 const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
+require("dotenv").config();
 const getJsonWebToken = async (email, id) => {
   //tao token cho user moi dang ky thanh cong de user do co the dang nhap vao he thong
   const payload = {
@@ -16,6 +18,50 @@ const getJsonWebToken = async (email, id) => {
 
   return token;
 };
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  auth: {
+    user: process.env.USERNAME_EMAIL,
+    pass: process.env.PASSWORD_EMAIL,
+  },
+});
+const handleSendMail = async (val) => {
+  try {
+    await transporter.sendMail(val);
+
+    return "OK";
+  } catch (error) {
+    return error;
+  }
+};
+const verification = asyncHandle(async (req, res) => {
+  const { email } = req.body;
+
+  const verificationCode = Math.round(100000 + Math.random() * 900000);
+
+  try {
+    const data = {
+      from: `"Hỗ trợ ứng dụng" <${process.env.USERNAME_EMAIL}>`,
+      to: email,
+      subject: "Mã email xác minh",
+      text: "Mã xác minh của bạn đã được gửi đến email",
+      html: `<h1>${verificationCode}</h1>`,
+    };
+
+    await handleSendMail(data);
+
+    res.status(200).json({
+      message: "Send verification code successfully!!!",
+      data: {
+        code: verificationCode,
+      },
+    });
+  } catch (error) {
+    res.status(401);
+    throw new Error("Không thể gửi mail");
+  }
+});
 const register = asyncHandle(async (req, res) => {
   const { email, fullname, password } = req.body;
 
@@ -47,6 +93,37 @@ const register = asyncHandle(async (req, res) => {
     },
   });
 });
+const login = asyncHandle(async (req, res) => {
+  const { email, password } = req.body;
+
+  const existingUser = await UserModel.findOne({ email });
+
+  if (!existingUser) {
+    res.status(403);
+    throw new Error("Không tồn tại tài khoản!!!");
+  }
+
+  const isMatchPassword = await bcryp.compare(password, existingUser.password);
+
+  if (!isMatchPassword) {
+    res.status(401);
+    throw new Error("Email hoặc mật khẩu không đúng!!!");
+  }
+
+  res.status(200).json({
+    message: "Đăng nhập thành công",
+    data: {
+      id: existingUser.id,
+      email: existingUser.email,
+      accesstoken: await getJsonWebToken(email, existingUser.id),
+      fcmTokens: existingUser.fcmTokens ?? [],
+      photo: existingUser.photoUrl ?? "",
+      name: existingUser.name ?? "",
+    },
+  });
+});
 module.exports = {
   register,
+  login,
+  verification,
 };
