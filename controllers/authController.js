@@ -42,11 +42,19 @@ const verification = asyncHandle(async (req, res) => {
 
   try {
     const data = {
-      from: `"Hỗ trợ ứng dụng" <${process.env.USERNAME_EMAIL}>`,
+      from: `"Hỗ trợ Ứng Dụng" <${process.env.USERNAME_EMAIL}>`,
       to: email,
-      subject: "Mã email xác minh",
-      text: "Mã xác minh của bạn đã được gửi đến email",
-      html: `<h1>${verificationCode}</h1>`,
+      subject: "Xác minh tài khoản - Mã xác nhận của bạn",
+      text: "Bạn đã yêu cầu mã xác minh để đăng ký hoặc đăng nhập vào ứng dụng. Vui lòng sử dụng mã dưới đây để hoàn tất quá trình xác thực:",
+      html: `
+        <p>Xin chào,</p>
+        <p>Bạn đã yêu cầu mã xác minh để đăng ký hoặc đăng nhập vào ứng dụng. Vui lòng sử dụng mã dưới đây để hoàn tất quá trình xác thực:</p>
+        <h2 style="color: #2d89ff; font-size: 24px;">${verificationCode}</h2>
+        <p>Lưu ý: Mã xác minh có hiệu lực trong 2 phút. Không chia sẻ mã này với bất kỳ ai.</p>
+        <p>Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email này.</p>
+        <p>Trân trọng,</p>
+        <p><strong>Đội ngũ hỗ trợ Ứng Dụng</strong></p>
+      `,
     };
 
     await handleSendMail(data);
@@ -122,8 +130,62 @@ const login = asyncHandle(async (req, res) => {
     },
   });
 });
+const forgotPassword = asyncHandle(async (req, res) => {
+  const { email } = req.body;
+
+  const randomPassword = Math.round(100000 + Math.random() * 99000);
+
+  const data = {
+    from: `"NAZU Support" <${process.env.USERNAME_EMAIL}>`,
+    to: email,
+    subject: "Khôi phục mật khẩu tài khoản NAZU",
+    text: `Xin chào ${email},\n\nChúng tôi đã nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.\nMật khẩu mới của bạn là: ${randomPassword}\n\nVui lòng đăng nhập và thay đổi mật khẩu ngay để đảm bảo an toàn.\nNếu bạn không yêu cầu điều này, hãy bỏ qua email này hoặc liên hệ với chúng tôi.`,
+    html: `
+        <p>Xin chào <strong>${email}</strong>,</p>
+        <p>Chúng tôi đã nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn trên ứng dụng <strong>NAZU</strong>.</p>
+        <p>Dưới đây là mật khẩu mới của bạn:</p>
+        <h2 style="color: #2d89ff; font-size: 24px;">${randomPassword}</h2>
+        <p><strong>Lưu ý:</strong> Vì lý do bảo mật, vui lòng đăng nhập và thay đổi mật khẩu ngay sau khi nhận được email này.</p>
+        <p>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này hoặc liên hệ với chúng tôi để được hỗ trợ.</p>
+        <p>Trân trọng,</p>
+        <p><strong>Đội ngũ hỗ trợ NAZU</strong></p>
+    `,
+  };
+
+  const user = await UserModel.findOne({ email });
+  if (user) {
+    const salt = await bcryp.genSalt(10);
+    const hashedPassword = await bcryp.hash(`${randomPassword}`, salt);
+
+    await UserModel.findByIdAndUpdate(user._id, {
+      password: hashedPassword,
+      isChangePassword: true,
+    })
+      .then(() => {
+        console.log("Done");
+      })
+      .catch((error) => console.log(error));
+
+    await handleSendMail(data)
+      .then(() => {
+        res.status(200).json({
+          message: "Send email new password successfully!!!",
+          data: [],
+        });
+      })
+      .catch((error) => {
+        res.status(401);
+        throw new Error("Can not send email");
+      });
+  } else {
+    res.status(401);
+    throw new Error("User not found!!!");
+  }
+});
+
 module.exports = {
   register,
   login,
   verification,
+  forgotPassword,
 };
